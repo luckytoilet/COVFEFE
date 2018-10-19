@@ -150,3 +150,8 @@ def load_conf(config_file):
             return lexical_list, do_lexical, pragmatic_list, do_pragmatic, semantic_list, do_semantic, syntactic_list, do_syntactic
 
     return None, True, None, True, None, True, None, True
+
+
+class MultilingualLex(FileOutputNode):
+    def run(self, in_file):
+        print(in_file)
