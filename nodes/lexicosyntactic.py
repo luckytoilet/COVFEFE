@@ -1,6 +1,7 @@
 import logging
 import os
 import datetime
+import subprocess
 
 from nodes.helper import FileOutputNode
 from utils import file_utils
@@ -153,5 +154,20 @@ def load_conf(config_file):
 
 
 class MultilingualLex(FileOutputNode):
-    def run(self, in_file):
-        print(in_file)
+    def setup(self):
+        self.output_parse_dir = os.path.join(self.out_dir, "stanford_parses")
+        
+    def _run_chinese_corenlp(self, filepath):
+        # lexparser_chinese.sh [output_dir] [transcript_file]
+        subprocess.call([
+            os.path.join(config.path_to_stanford_cp, 'lexparser_chinese.sh'),
+            self.output_parse_dir,
+            filepath
+        ])
+
+    def run(self, filepath):
+        self.log(logging.INFO, "Starting %s" % (filepath))
+        out_file = self.derive_new_file_path(filepath, ".csv")
+
+        if file_utils.should_run(filepath, out_file):
+            self._run_chinese_corenlp(filepath)
