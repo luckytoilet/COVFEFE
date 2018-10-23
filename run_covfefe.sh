@@ -1,5 +1,5 @@
 # For testing lex features
-python covfefe.py -i ~/research/lex_test -o ~/research/lex_out -p multilingual_lex
+python covfefe.py -i ~/research/lex_test -o ~/research/lex_out -p multilingual_lex -n 16
 #python covfefe.py -i ~/research/lex_test -o ~/research/lex_out -p lex
 
 # For processing dementiabank
