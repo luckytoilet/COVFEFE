@@ -4,6 +4,8 @@ import csv
 import os
 import re
 import logging
+import statistics
+import wordfreq
 
 from nodes.helper import FileOutputNode
 from utils import file_utils
@@ -59,19 +61,39 @@ class MultilangTranscript(object):
             for tag in self.pos_tags:
                 if tag == pos_tag:
                     count += 1
-            self.features[pos_tag] = count
-            self.features['ratio_' + pos_tag] = count / len(self.pos_tags)
+            self.features['pos_' + pos_tag] = count
+            self.features['pos_ratio_' + pos_tag] = count / len(self.pos_tags)
 
         # A few special ones
-        self.features['ratio_pronoun_noun'] = self.features['PN'] / (self.features['PN'] + self.features['NN'])
-        self.features['ratio_noun_verb'] = self.features['NN'] / (self.features['NN'] + self.features['VV'])
+        self.features['ratio_pronoun_noun'] = self.features['pos_PN'] / (self.features['pos_PN'] + self.features['pos_NN'])
+        self.features['ratio_noun_verb'] = self.features['pos_NN'] / (self.features['pos_NN'] + self.features['pos_VV'])
+
+        self.features['num_tokens'] = len(self.pos_tags)
 
 
-    def _write_features(self, out_file):
-        with open(out_file, 'w') as f:
-            csvw = csv.writer(f)
-            csvw.writerow(list(self.features.keys()))
-            csvw.writerow(list(self.features.values()))
+    def compute_word_frequency_norms(self):
+        freqs = []
+        for char in self.tokens:
+            freq = wordfreq.word_frequency(char, 'zh')
+
+            if freq == 0:
+                continue
+
+            freqs.append(freq)
+
+        self.features['mean_word_frequency'] = statistics.mean(freqs)
+        self.features['median_word_frequency'] = statistics.median(freqs)
+
+
+    def write_features(self, out_file, debug):
+        if debug:
+            for k, v in self.features.items():
+                print(k, v)
+        else:
+            with open(out_file, 'w') as f:
+                csvw = csv.writer(f)
+                csvw.writerow(list(self.features.keys()))
+                csvw.writerow(list(self.features.values()))
 
     def _calc_ttr(self, text):
         """TTR = unique words / all words"""
@@ -98,10 +120,11 @@ class MultilangTranscript(object):
                 self.tokens = f.read()
 
             self.compute_basic_word_stats()
+            self.compute_word_frequency_norms()
 
             self._run_chinese_corenlp(self.filepath)
             self._parse_corenlp_output()
-            #self._write_features(out_file)
+            self.write_features(self.out_file, debug=True)
 
 
 class MultilingualLex(FileOutputNode):
