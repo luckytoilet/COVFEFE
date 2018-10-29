@@ -6,6 +6,7 @@ import re
 import logging
 import statistics
 import wordfreq
+import nltk.tree
 
 from nodes.helper import FileOutputNode
 from utils import file_utils
@@ -29,6 +30,7 @@ class MultilangTranscript(object):
 
         self.features = collections.OrderedDict()
         self.pos_tags = []
+        self.parse_trees = []
 
 
     def _run_chinese_corenlp(self, filepath):
@@ -69,6 +71,36 @@ class MultilangTranscript(object):
         self.features['ratio_noun_verb'] = self.features['pos_NN'] / (self.features['pos_NN'] + self.features['pos_VV'])
 
         self.features['num_tokens'] = len(self.pos_tags)
+
+
+        # Parse constituency trees
+        with open(self.corenlp_out_file) as f:
+
+            partial_parse_tree = ''
+            for line in f.readlines():
+
+                # If it starts with '(', then begin a new tree
+                if line.startswith('('):
+                    if len(partial_parse_tree) > 0:
+                        parse_tree = nltk.tree.Tree.fromstring(partial_parse_tree)
+                        self.parse_trees.append(parse_tree)
+                        partial_parse_tree = ''
+
+                line = line.strip()
+                if line.startswith('('):
+                    partial_parse_tree += ' ' + line
+
+            # Last parse tree
+            parse_tree = nltk.tree.Tree.fromstring(partial_parse_tree)
+            self.parse_trees.append(parse_tree)
+
+        # Parse tree features
+        tree_heights = []
+        for tree in self.parse_trees:
+            tree_heights.append(tree.height())
+        self.features['max_tree_height'] = max(tree_heights)
+        self.features['mean_tree_height'] = statistics.mean(tree_heights)
+        self.features['median_tree_height'] = statistics.median(tree_heights)
 
 
     def compute_word_frequency_norms(self):
