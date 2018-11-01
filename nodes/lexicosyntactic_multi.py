@@ -18,27 +18,33 @@ SENTENCE_TOKENS = '.。!?！？'
 POS_TAGS = [
     "AD","AS","BA","CC","CD","CS","DEC","DEG","DER","DEV","DT","ETC","FW","IJ",
     "JJ","LB","LC","M","MSP","NN","NR","NT","OD","ON","P","PN","PU","SB","SP",
-    "VA","VC","VE","VV","X"
+    "VA","VC","VE","VV","X","XX","URL"
 ]
 
 
 class MultilangTranscript(object):
-    def __init__(self, filepath, out_file, output_parse_dir):
+    def __init__(self, filepath, out_file, output_parse_dir, cfg_rules):
         self.filepath = filepath
         self.out_file = out_file
         self.output_parse_dir = output_parse_dir
+        self.cfg_rules = cfg_rules
 
         self.features = collections.OrderedDict()
         self.pos_tags = []
         self.parse_trees = []
 
+    def _ratio(self, a, b):
+        """Divide but default to 1 if denominator is zero"""
+        if b == 0:
+            return 1
+        else:
+            return a / b
+
 
     def _run_chinese_corenlp(self, filepath):
         self.corenlp_out_file = os.path.join(self.output_parse_dir, os.path.basename(filepath) + '.out')
 
-        if os.path.isfile(self.corenlp_out_file):
-            print('Already parsed:', self.corenlp_out_file)
-        else:
+        if not os.path.isfile(self.corenlp_out_file):
             # lexparser_chinese.sh [output_dir] [transcript_file]
             subprocess.call([
                 os.path.join(config.path_to_stanford_cp, 'lexparser_chinese.sh'),
@@ -64,11 +70,11 @@ class MultilangTranscript(object):
                 if tag == pos_tag:
                     count += 1
             self.features['pos_' + pos_tag] = count
-            self.features['pos_ratio_' + pos_tag] = count / len(self.pos_tags)
+            self.features['pos_ratio_' + pos_tag] = self._ratio(count, len(self.pos_tags))
 
         # A few special ones
-        self.features['ratio_pronoun_noun'] = self.features['pos_PN'] / (self.features['pos_PN'] + self.features['pos_NN'])
-        self.features['ratio_noun_verb'] = self.features['pos_NN'] / (self.features['pos_NN'] + self.features['pos_VV'])
+        self.features['ratio_pronoun_noun'] = self._ratio(self.features['pos_PN'], (self.features['pos_PN'] + self.features['pos_NN']))
+        self.features['ratio_noun_verb'] = self._ratio(self.features['pos_NN'], (self.features['pos_NN'] + self.features['pos_VV']))
 
         self.features['num_tokens'] = len(self.pos_tags)
 
@@ -82,8 +88,11 @@ class MultilangTranscript(object):
                 # If it starts with '(', then begin a new tree
                 if line.startswith('('):
                     if len(partial_parse_tree) > 0:
-                        parse_tree = nltk.tree.Tree.fromstring(partial_parse_tree)
-                        self.parse_trees.append(parse_tree)
+                        try:
+                            parse_tree = nltk.tree.Tree.fromstring(partial_parse_tree)
+                            self.parse_trees.append(parse_tree)
+                        except:
+                            pass
                         partial_parse_tree = ''
 
                 line = line.strip()
@@ -91,8 +100,11 @@ class MultilangTranscript(object):
                     partial_parse_tree += ' ' + line
 
             # Last parse tree
-            parse_tree = nltk.tree.Tree.fromstring(partial_parse_tree)
-            self.parse_trees.append(parse_tree)
+            try:
+                parse_tree = nltk.tree.Tree.fromstring(partial_parse_tree)
+                self.parse_trees.append(parse_tree)
+            except:
+                pass
 
         # Parse tree features
         tree_heights = []
@@ -101,6 +113,17 @@ class MultilangTranscript(object):
         self.features['max_tree_height'] = max(tree_heights)
         self.features['mean_tree_height'] = statistics.mean(tree_heights)
         self.features['median_tree_height'] = statistics.median(tree_heights)
+
+        # Count CFG rules
+        dtree = collections.defaultdict(int)
+        for tree in self.parse_trees:
+            for cfg_rule in tree.productions():
+                if cfg_rule.is_nonlexical():
+                  cfg_rule_str = str(cfg_rule).replace(' ', '_')
+                  dtree[cfg_rule_str] += 1
+
+        for cfg_rule in self.cfg_rules:
+            self.features[cfg_rule] = dtree[cfg_rule]
 
 
     def compute_word_frequency_norms(self):
@@ -113,8 +136,12 @@ class MultilangTranscript(object):
 
             freqs.append(freq)
 
-        self.features['mean_word_frequency'] = statistics.mean(freqs)
-        self.features['median_word_frequency'] = statistics.median(freqs)
+        try:
+            self.features['mean_word_frequency'] = statistics.mean(freqs)
+            self.features['median_word_frequency'] = statistics.median(freqs)
+        except:
+            self.features['mean_word_frequency'] = 0
+            self.features['median_word_frequency'] = 0
 
 
     def write_features(self, out_file, debug):
@@ -131,7 +158,7 @@ class MultilangTranscript(object):
         """TTR = unique words / all words"""
         N = len(text)
         V = len(set(text))
-        return V / N
+        return self._ratio(V, N)
 
 
     def compute_basic_word_stats(self):
@@ -141,7 +168,7 @@ class MultilangTranscript(object):
         word_lengths = [len(x) for x in self.tokens if x not in SENTENCE_TOKENS]
 
         self.features['num_sentences'] = num_sentences
-        self.features['mean_words_per_sentence'] = num_words / num_sentences
+        self.features['mean_words_per_sentence'] = self._ratio(num_words, num_sentences)
         self.features['ttr'] = ttr
 
     def run(self):
@@ -156,18 +183,20 @@ class MultilangTranscript(object):
 
             self._run_chinese_corenlp(self.filepath)
             self._parse_corenlp_output()
-            self.write_features(self.out_file, debug=True)
+            self.write_features(self.out_file, debug=False)
 
 
 class MultilingualLex(FileOutputNode):
     def setup(self):
         self.output_parse_dir = os.path.join(self.out_dir, "stanford_parses")
+        with open('/h/bai/research/bai-alzheimer/naacl19/top_chinese_cfg.txt') as cfgf:
+            self.cfg_rules = list(map(lambda x: x[:-1], cfgf.readlines()))
 
     def run(self, filepath):
         self.log(logging.INFO, "Starting %s" % (filepath))
         out_file = self.derive_new_file_path(filepath, ".csv")
 
-        transcript = MultilangTranscript(filepath, out_file, self.output_parse_dir)
+        transcript = MultilangTranscript(filepath, out_file, self.output_parse_dir, self.cfg_rules)
         transcript.run()
 
         self.emit(out_file)
