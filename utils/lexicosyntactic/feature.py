@@ -258,8 +258,8 @@ class FeatureExtractor(object):
         headers = [feat.name for feat in t.feature_set]
         with open(out_csv, 'w') as csvfout:
             csvwriter = csv.writer(csvfout, delimiter=',', quoting=csv.QUOTE_ALL)
-            csvwriter.writerow(headers)
-            csvwriter.writerow([feat.value for feat in t.feature_set])
+            csvwriter.writerow(['FileID'] + headers)
+            csvwriter.writerow([t.filepath] + [feat.value for feat in t.feature_set])
 
 
     def extract_lexical(self, transcript_utterances, transcript_utterances_fillers, pos_utterances, total_words, list_features=None):
