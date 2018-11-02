@@ -197,6 +197,9 @@ class MultilingualLex(FileOutputNode):
         out_file = self.derive_new_file_path(filepath, ".csv")
 
         transcript = MultilangTranscript(filepath, out_file, self.output_parse_dir, self.cfg_rules)
-        transcript.run()
+        try:
+            transcript.run()
+        except:
+            print('Failed:', filepath)
 
         self.emit(out_file)
