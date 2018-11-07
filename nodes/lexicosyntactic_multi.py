@@ -44,13 +44,13 @@ class MultilangTranscript(object):
     def _run_chinese_corenlp(self, filepath):
         self.corenlp_out_file = os.path.join(self.output_parse_dir, os.path.basename(filepath) + '.out')
 
-        if not os.path.isfile(self.corenlp_out_file):
-            # lexparser_chinese.sh [output_dir] [transcript_file]
-            subprocess.call([
-                os.path.join(config.path_to_stanford_cp, 'lexparser_chinese.sh'),
-                self.output_parse_dir,
-                filepath
-            ])
+#        if not os.path.isfile(self.corenlp_out_file):
+#            # lexparser_chinese.sh [output_dir] [transcript_file]
+#            subprocess.call([
+#                os.path.join(config.path_to_stanford_cp, 'lexparser_chinese.sh'),
+#                self.output_parse_dir,
+#                filepath
+#            ])
 
     def _parse_corenlp_output(self):
         with open(self.corenlp_out_file) as f:
@@ -115,15 +115,17 @@ class MultilangTranscript(object):
         self.features['median_tree_height'] = statistics.median(tree_heights)
 
         # Count CFG rules
+        num_cfg_productions = 0
         dtree = collections.defaultdict(int)
         for tree in self.parse_trees:
             for cfg_rule in tree.productions():
                 if cfg_rule.is_nonlexical():
                   cfg_rule_str = str(cfg_rule).replace(' ', '_')
                   dtree[cfg_rule_str] += 1
+                  num_cfg_productions += 1
 
         for cfg_rule in self.cfg_rules:
-            self.features[cfg_rule] = dtree[cfg_rule]
+            self.features[cfg_rule] = dtree[cfg_rule] / num_cfg_productions
 
 
     def compute_word_frequency_norms(self):
